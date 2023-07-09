@@ -6,8 +6,16 @@ A hypergraph-based tabular language model.
 
 
 # Pretraining
+environment
+data
+checkpoints
+run script
 
 # Evaluation
+environment
+data
+checkpoints
+run script
 
 # Load Checkpoints for Custom Data
 To appear.
