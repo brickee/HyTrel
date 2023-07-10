@@ -8,7 +8,7 @@ This repository contains the official implementation for the paper **HyTrel: Hyp
 
 # Environment
 - The pretraining and evaluation are conducted with `python 3.9.13`
-- Install the required packages using: `pip install -r requirements.txt`
+- Install the required packages using `pip install -r requirements.txt`
 
 # Pretraining
 - Put the pre-processed and structured pretraining data into the directory `/data/pretrain/`\
