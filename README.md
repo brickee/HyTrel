@@ -20,7 +20,7 @@ This repository contains the official implementation for the paper **HyTrel: Hyp
 
 # Evaluation
 ## Column Type Annotation
-- Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/'
+- Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/`
 - Run `sh evaluate_cta.sh`
 
 # Load Checkpoints for Custom Data
