@@ -6,6 +6,10 @@ This repository contains the official implementation for the paper **HyTrel: Hyp
 ![figure1](figure1.png)
 
 
+# Environment
+
+`pip install -r requirements.txt`
+
 # Pretraining
 environment
 data
