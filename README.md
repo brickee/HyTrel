@@ -22,6 +22,7 @@ The pretraining and evaluation are conducted with `python 3.9.13`. Here is an ex
 # Evaluation
 ## Column Type Annotation
 - Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/`
+- Put the checkpoints to `...`
 - Run `sh evaluate_cta.sh`
 
 # Load Checkpoints for Custom Data
