@@ -7,7 +7,8 @@ This repository contains the official implementation for the paper **HyTrel: Hyp
 
 
 # Environment
-- The pretraining and evaluation are conducted with `python 3.9.13`
+The pretraining and evaluation are conducted with `python 3.9.13`. Here is an example of creating the environment using [Anaconda](https://www.anaconda.com/) 
+- Create the virtual environment using `conda create -n hytrel python=3.9.13`
 - Install the required packages using `pip install -r requirements.txt`
 
 # Pretraining
