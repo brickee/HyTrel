@@ -12,7 +12,7 @@ This repository contains the official implementation for the paper **HyTrel: Hyp
 
 # Pretraining
 - Put the pre-processed and structured pretraining data into the directory `/data/pretrain/` [arrow](https://arrow.apache.org/docs/python/index.html)
-  (Pretraining data `tables_train.jsonl` and `tables_valid.jsonl` are acquired and preprocessed by using the scripts from the [TaBERT](https://arrow.apache.org/docs/python/index.html); We format it as [arrow](https://arrow.apache.org/docs/python/index.html) format in consideration of memory usage. 
+  (Pretraining data `tables_{train, valid}.jsonl` are acquired and preprocessed by using the scripts from the [TaBERT](https://arrow.apache.org/docs/python/index.html); We format it as [arrow](https://arrow.apache.org/docs/python/index.html) format in consideration of memory usage. 
 - Run `sh pretrain.sh`
 
 
