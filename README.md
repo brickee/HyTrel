@@ -27,4 +27,4 @@ This repository contains the official implementation for the paper **HyTrel: Hyp
 To appear.
 
 # Reference
-To appear.
+Please cite our paper: To appear.
