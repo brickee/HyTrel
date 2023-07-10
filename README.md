@@ -12,15 +12,14 @@ This repository contains the official implementation for the paper **HyTrel: Hyp
 
 # Pretraining
 - Put the pre-processed and structured pretraining data into the directory `/data/pretrain/` [arrow](https://arrow.apache.org/docs/python/index.html)
-  (Pretraining data are acquired and preprocessed by using the scripts from the [TaBERT](https://arrow.apache.org/docs/python/index.html); We format it as [arrow](https://arrow.apache.org/docs/python/index.html) format in consideration of memory usage. 
+  (Pretraining data `tables_train.jsonl` and `tables_valid.jsonl` are acquired and preprocessed by using the scripts from the [TaBERT](https://arrow.apache.org/docs/python/index.html); We format it as [arrow](https://arrow.apache.org/docs/python/index.html) format in consideration of memory usage. 
 - Run `sh pretrain.sh`
 
 
 # Evaluation
-environment
-data
-checkpoints
-run script
+## Column Type Annotation
+- Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/'
+- Run `sh evaluate_cta.sh`
 
 # Load Checkpoints for Custom Data
 To appear.
