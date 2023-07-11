@@ -23,7 +23,7 @@ Note: Please refer [here](https://pytorch-geometric.readthedocs.io/en/latest/ins
 # Evaluation
 ## Column Type Annotation
 - Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/`
-- Put the checkpoints to `...`
+- Put the checkpoints to `/checkpoints/`
 - Run `sh evaluate_cta.sh`
 
 # Load Checkpoints for Custom Data
