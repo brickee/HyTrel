@@ -35,22 +35,22 @@ class DataArguments:
             "help": "bert-base-cased, bert-base-uncased etc"
         },
     )
-    data_path: str = field(default='../table_graph/data/pretrain/', metadata={"help": "data path"})
+    data_path: str = field(default='./data/pretrain/', metadata={"help": "data path"})
     max_token_length: int = field(
-        default=5,
+        default=64,
         metadata={
             "help": "The maximum total input token length for cell/caption/header after tokenization. Sequences longer "
                     "than this will be truncated."
         },
     )
     max_row_length: int = field(
-        default=12,
+        default=30,
         metadata={
             "help": "The maximum total input rows for a table"
         },
     )
     max_column_length: int = field(
-        default=8,
+        default=20,
         metadata={
             "help": "The maximum total input columns for a table"
 
@@ -68,8 +68,8 @@ class DataArguments:
     )
 
     seed: int = 42
-    max_epoch: int = 10
-    electra: bool = True
+    max_epoch: int = 5
+    electra: bool = False
     mask_ratio: float = 0.15
     contrast_bipartite_edge: bool = False 
     bipartite_edge_corrupt_ratio: float=0.3
@@ -367,7 +367,8 @@ def main():
         callbacks=callbacks,
         plugins=plugins,
         logger=tb_logger,
-        max_epochs = data_args.max_epoch
+        max_epochs = data_args.max_epoch,
+        precision='bf16'
     )
     trainer.fit(model_module, data_module) 
 

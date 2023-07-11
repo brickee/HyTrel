@@ -33,14 +33,95 @@ from typing import Optional
 from dataclasses import dataclass, field, fields
 
 
+#********************************* set up arguments *********************************
+@dataclass
+class DataArguments:
+    """
+    Arguments pertaining to which config/tokenizer we are going use.
+    """
+    tokenizer_config_type: str = field(
+        default='bert-base-uncased',
+        metadata={
+            "help": "bert-base-cased, bert-base-uncased etc"
+        },
+    )
+    data_path: str = field(default='./data/col_ann/', metadata={"help": "data path"})
+    max_token_length: int = field(
+        default=64,
+        metadata={
+            "help": "The maximum total input token length for cell/caption/header after tokenization. Sequences longer "
+                    "than this will be truncated."
+        },
+    )
+    max_row_length: int = field(
+        default=30,
+        metadata={
+            "help": "The maximum total input rows for a table"
+        },
+    )
+    max_column_length: int = field(
+        default=20,
+        metadata={
+            "help": "The maximum total input columns for a table"
+
+        },
+    )
+    label_type_num: int = field(
+        default=255,
+        metadata={
+            "help": "The total label types"
+
+        },
+    )
+
+    num_workers: Optional[int] = field(
+        default=8,
+        metadata={"help": "Number of workers for dataloader"},
+    )
+
+    valid_ratio: float = field(
+        default=0.3,
+        metadata={"help": "Number of workers for dataloader"},
+    )
+    
 
 
 
+@dataclass
+class OptimizerConfig:
+    batch_size: int = 256
+    base_learning_rate: float = 1e-3
+    weight_decay: float = 0.02
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.98
+    adam_epsilon: float = 1e-5
+    lr_scheduler_type: transformers.SchedulerType = "linear"
+    warmup_step_ratio: float = 0.1
+    seed: int = 42
+    optimizer: str = "Adam"
+    adam_w_mode: bool = True
+    save_every_n_epochs: int=1
+    save_top_k: int=1
+    checkpoint_path: str=''
 
+    def get_optimizer(self, optim_groups, learning_rate):
+        optimizer = self.optimizer.lower()
+        optim_cls = {
+            "adam": AdamW if self.adam_w_mode else Adam,
+        }[optimizer]
 
+        args = [optim_groups]
+        kwargs = {
+            "lr": learning_rate,
+            "eps": self.adam_epsilon,
+            "betas": (self.adam_beta1, self.adam_beta2),
+        }
+        if optimizer in {"fusedadam", "fusedlamb"}:
+            kwargs["adam_w_mode"] = self.adam_w_mode
 
-seed = 32
-seed_everything(seed, workers=True)
+        optimizer = optim_cls(*args, **kwargs)
+        return optimizer
+
 
 
 def torch_summarize(model, show_weights=True, show_parameters=True):
@@ -373,10 +454,9 @@ class CTAClassifier(pl.LightningModule):
         super().__init__()
         self.model_config = model_config
         self.enc = Encoder(self.model_config)
-        check_point_path = "/home/ubuntu/table_pretrain_eks/patrick_table_contrast_edge_hyper_12l_27m_deepspeed_256_16_final/epoch=4-step=32690.ckpt/checkpoint/mp_rank_00_model_states.pt"
-        print('check point',check_point_path)
+        print('check point',optimizer_cfg.checkpoint_path)
         # for non-deepseepd
-        # state_dict = torch.load(open(check_point_path, 'rb'))['state_dict']
+        # state_dict = torch.load(open(checkpoint_path, 'rb'))['state_dict']
         # from collections import OrderedDict
         # new_state_dict = OrderedDict()
         # for k, v in state_dict.items():
@@ -386,7 +466,7 @@ class CTAClassifier(pl.LightningModule):
         # self.enc.load_state_dict(new_state_dict, strict=True)
         
         # for deepspeed
-        state_dict = torch.load(open(check_point_path, 'rb'))
+        state_dict = torch.load(open(optimizer_cfg.checkpoint_path, 'rb'))
         from collections import OrderedDict
         new_state_dict = OrderedDict()
         for k, v in state_dict['module'].items():
@@ -524,116 +604,11 @@ class CTAClassifier(pl.LightningModule):
 
 
 
-#********************************* set up arguments *********************************
-
-@dataclass
-class DataArguments:
-    """
-    Arguments pertaining to which config/tokenizer we are going use.
-    """
-    tokenizer_config_type: str = field(
-        default='bert-base-uncased',
-        metadata={
-            "help": "bert-base-cased, bert-base-uncased etc"
-        },
-    )
-    data_path: str = field(default='../table_graph/data/col_ann/', metadata={"help": "data path"})
-    max_token_length: int = field(
-        default=64,
-        metadata={
-            "help": "The maximum total input token length for cell/caption/header after tokenization. Sequences longer "
-                    "than this will be truncated."
-        },
-    )
-    max_row_length: int = field(
-        default=30,
-        metadata={
-            "help": "The maximum total input rows for a table"
-        },
-    )
-    max_column_length: int = field(
-        default=20,
-        metadata={
-            "help": "The maximum total input columns for a table"
-
-        },
-    )
-    label_type_num: int = field(
-        default=255,
-        metadata={
-            "help": "The total label types"
-
-        },
-    )
-
-    num_workers: Optional[int] = field(
-        default=8,
-        metadata={"help": "Number of workers for dataloader"},
-    )
-
-    valid_ratio: float = field(
-        default=0.3,
-        metadata={"help": "Number of workers for dataloader"},
-    )
-
-
-    def __post_init__(self):
-        if self.tokenizer_config_type not in ["bert-base-cased", "bert-base-uncased"]:
-            raise ValueError(
-                f"The model type should be bert-base-(un)cased. The current value is {self.tokenizer_config_type}."
-            )
-
-
-
-@dataclass
-class OptimizerConfig:
-    batch_size: int = 256
-    base_learning_rate: float = 1e-3
-    weight_decay: float = 0.02
-    adam_beta1: float = 0.9
-    adam_beta2: float = 0.98
-    adam_epsilon: float = 1e-5
-    lr_scheduler_type: transformers.SchedulerType = "linear"
-    warmup_step_ratio: float = 0.1
-    seed: int = 42
-    optimizer: str = "Adam"
-    adam_w_mode: bool = True
-    save_every_n_epochs: int=1
-    save_top_k: int=1
-    stage_eks: bool=False
-
-
-    def __post_init__(self):
-        if self.optimizer.lower() not in {
-            "adam",
-            "fusedadam",
-            "fusedlamb",
-            "fusednovograd",
-        }:
-            raise KeyError(
-                f"The optimizer type should be one of: Adam, FusedAdam, FusedLAMB, FusedNovoGrad. The current value is {self.optimizer}."
-            )
-
-    def get_optimizer(self, optim_groups, learning_rate):
-        optimizer = self.optimizer.lower()
-        optim_cls = {
-            "adam": AdamW if self.adam_w_mode else Adam,
-        }[optimizer]
-
-        args = [optim_groups]
-        kwargs = {
-            "lr": learning_rate,
-            "eps": self.adam_epsilon,
-            "betas": (self.adam_beta1, self.adam_beta2),
-        }
-        if optimizer in {"fusedadam", "fusedlamb"}:
-            kwargs["adam_w_mode"] = self.adam_w_mode
-
-        optimizer = optim_cls(*args, **kwargs)
-        return optimizer
 
 
 def evaluate():
+    # ********************************* set up logger *********************************
+
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -641,7 +616,8 @@ def evaluate():
     )
     py_logger = logging.getLogger(__name__)
     py_logger.setLevel(logging.INFO)
-    tb_logger = TensorBoardLogger("logs", name="cta_evaluate")
+
+    tb_logger = TensorBoardLogger("logs", name="cta_evaluate", default_hp_metric=True)
 
     # ********************************* parse arguments *********************************
     parser = HfArgumentParser((DataArguments, OptimizerConfig))
@@ -702,4 +678,6 @@ def evaluate():
 if __name__ == '__main__':
     import warnings
     warnings.filterwarnings("ignore")
+    seed = 32
+    seed_everything(seed, workers=True)
     evaluate()
