@@ -7,7 +7,7 @@ This repository contains the official implementation for the paper **HyTrel: Hyp
 
 
 # Environment
-The pretraining and evaluation are conducted with `python 3.9`. Here is an example of creating the environment using [Anaconda](https://www.anaconda.com/) 
+The pretraining and evaluation are conducted with `python 3.9`. Here is an example of creating the environment using [Anaconda](https://www.anaconda.com/). 
 - Create the virtual environment using `conda create -n hytrel python=3.9`
 - Install the required packages in `requirements.txt` \
 Note: Please refer [here](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) to install `torch_geometric`
