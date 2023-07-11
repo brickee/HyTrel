@@ -1,1 +1,1 @@
-Put the checkpoint in this directory.
+Put the checkpoints in this directory.
