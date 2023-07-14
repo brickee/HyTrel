@@ -16,7 +16,8 @@ The pretraining and evaluation are conducted with `python 3.9`. Here is an examp
   **Note**:
   1. Pretraining data `tables_{train, valid}.jsonl` are acquired and preprocessed by using the scripts from the [TaBERT](https://arrow.apache.org/docs/python/index.html); 
   2. We format it as [arrow](https://arrow.apache.org/docs/python/index.html) in consideration of memory usage. 
-- Run `sh pretrain.sh`
+- Run `sh pretrain_electra.sh` to pretrain HyTrel with the [ELECTRA](https://arxiv.org/abs/2105.02584) objective
+- Run `sh pretrain_contrast.sh` to pretrain HyTrel with the Contrastive objective
 
 
 # Evaluation
