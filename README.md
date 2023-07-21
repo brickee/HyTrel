@@ -6,7 +6,7 @@ This repository contains the official implementation for the paper **HyTrel: Hyp
 ![figure1](figure1.png)
 
 
-# Environment
+# Installation
 It's recommended to use `python 3.9`.
 
 Here is an example of creating the environment using [Anaconda](https://www.anaconda.com/). 
