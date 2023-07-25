@@ -34,4 +34,16 @@ Here is an example of creating the environment using [Anaconda](https://www.anac
 To appear.
 
 # Reference
-Please cite our paper: To appear.
+Please cite our [paper](https://arxiv.org/pdf/2307.08623.pdf).
+
+
+```text
+@article{chen2023hytrel,
+ archiveprefix = {arXiv},
+ author = {Pei Chen and Soumajyoti Sarkar and Leonard Lausen and Balasubramaniam Srinivasan and Sheng Zha and Ruihong Huang and George Karypis},
+ eprint = {2307.08623},
+ primaryclass = {cs.LG},
+ title = {HYTREL: Hypergraph-enhanced Tabular Data Representation Learning},
+ year = {2023}
+}
+```
