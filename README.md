@@ -30,6 +30,16 @@ Here is an example of creating the environment using [Anaconda](https://www.anac
 - Put the checkpoints to `/checkpoints/`
 - Run `sh evaluate_cta.sh`
 
+## Column Property Annotation
+- Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_rel/`
+- Put the checkpoints to `/checkpoints/`
+- Run `sh evaluate_cpa.sh`
+
+## Column Type Annotation
+- Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/ttd/`
+- Put the checkpoints to `/checkpoints/`
+- Run `sh evaluate_ttd.sh`
+
 # Load Checkpoints for Custom Data
 To appear.
 
