@@ -28,10 +28,11 @@ Here is an example of creating the environment using [Anaconda](https://www.anac
 
 
 # Evaluation
+First put the [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint to `/checkpoints/electra/`, and Contrast-pretrained checkpoint to `/checkpoints/contrast/`
 ## Column Type Annotation
 - Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/`.
   
-- Put the checkpoints to `/checkpoints/`.
+
   
 - Run `sh evaluate_cta_electra.sh` with [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint.
 
