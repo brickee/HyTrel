@@ -153,7 +153,7 @@ class TableDataModule(pl.LightningDataModule):
     
 
     def _tokenize_word(self, word):
-        # refer to numBERT
+        # refer to numBERT: https://github.com/google-research/google-research/tree/master/numbert
         number_pattern = re.compile(
             r"(\d+)\.?(\d*)")  # Matches numbers in decimal form.
         def number_repl(matchobj):
