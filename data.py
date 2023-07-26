@@ -11,8 +11,16 @@ from torch_geometric.data.batch import Batch
 from torch.utils.data import DataLoader
 
 from dataclasses import dataclass
-from constant import CAP_TAG, HEADER_TAG, ROW_TAG,MISSING_CAP_TAG, MISSING_CELL_TAG, MISSING_HEADER_TAG
 
+
+# constants
+CAP_TAG = "<caption>"
+HEADER_TAG = "<header>"
+ROW_TAG = "<row>"
+
+MISSING_CAP_TAG = '[TAB]'
+MISSING_CELL_TAG = "[CELL]"
+MISSING_HEADER_TAG = "[HEAD]"
 
 
 
