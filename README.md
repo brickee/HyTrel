@@ -18,9 +18,12 @@ Here is an example of creating the environment using [Anaconda](https://www.anac
 # Pretraining
 -  Pre-process the raw data, slicing the big file into chunks, and put the `*.jsonl` files into the directory `/data/pretrain/chunks/`\
   **Note**: Pretraining data `*.jsonl` are acquired and preprocessed by using the scripts from the [TaBERT](https://arrow.apache.org/docs/python/index.html);
+ 
 - Run `python parallel_clean.py` to clean and serialize the tables. \
   **Note**: We serialize the tables as [arrow](https://arrow.apache.org/docs/python/index.html) in consideration of memory usage.
+  
 - Run `sh pretrain_electra.sh` to pretrain HyTrel with the [ELECTRA](https://arxiv.org/abs/2105.02584) objective
+  
 - Run `sh pretrain_contrast.sh` to pretrain HyTrel with the Contrastive objective
 
 
