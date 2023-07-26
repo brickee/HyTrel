@@ -13,7 +13,7 @@ Here is an example of creating the environment using [Anaconda](https://www.anac
 - Create the virtual environment using `conda create -n hytrel python=3.9`
 - Install the required packages with the corresponding versions from `requirements.txt`
 
-**Note**: Please refer [here](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) to install `torch_geometric` according to your environment settings.
+**Note**: If you encounter difficulty installing `torch_geometric`, please refer [here](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) to install it according to your environment settings.
 
 # Pretraining
 - Put the pre-processed and structured pretraining data into the directory `/data/pretrain/`\
