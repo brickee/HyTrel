@@ -12,7 +12,6 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.nn import BCEWithLogitsLoss
-from torch.nn.modules.module import _addindent
 
 from torch_geometric.data import InMemoryDataset
 from torch_geometric.loader import DataLoader
@@ -124,33 +123,6 @@ class OptimizerConfig:
 
 
 
-def torch_summarize(model, show_weights=True, show_parameters=True):
-    """Summarizes torch model by showing trainable parameters and weights."""
-    tmpstr = model.__class__.__name__ + ' (\n'
-    for key, module in model._modules.items():
-        # if it contains layers let call it recursively to get params and weights
-        if type(module) in [
-            torch.nn.modules.container.Container,
-            torch.nn.modules.container.Sequential
-        ]:
-            modstr = torch_summarize(module)
-        else:
-            modstr = module.__repr__()
-        modstr = _addindent(modstr, 2)
-
-        params = sum([np.prod(p.size()) for p in module.parameters()])
-        weights = tuple([tuple([n, p.size()]) for n,p in module.named_parameters()])
-
-        tmpstr += '  (' + key + '): ' + modstr
-        if show_weights:
-            tmpstr += ', weights={}'.format(weights)
-        if show_parameters:
-            tmpstr +=  ', parameters={}'.format(params)
-        tmpstr += '\n'
-
-    tmpstr = tmpstr + ')'
-    return tmpstr
-
 def vocab2lbl(label_file):
     lbl_dict = {}
     with open(label_file, 'r') as f:
@@ -182,7 +154,7 @@ class CTAHyperGraphDataset(InMemoryDataset):
 
     def _tokenize_word(self, word):
 
-        # refer to numBERT
+        # refer to numBERT: https://github.com/google-research/google-research/tree/master/numbert
         number_pattern = re.compile(
             r"(\d+)\.?(\d*)")  # Matches numbers in decimal form.
         def number_repl(matchobj):
