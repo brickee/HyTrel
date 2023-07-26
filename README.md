@@ -29,9 +29,13 @@ Here is an example of creating the environment using [Anaconda](https://www.anac
 
 # Evaluation
 ## Column Type Annotation
-- Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/`
-- Put the checkpoints to `/checkpoints/`
-- Run `sh evaluate_cta.sh`
+- Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/`.
+  
+- Put the checkpoints to `/checkpoints/`.
+  
+- Run `sh evaluate_cta_electra.sh` with [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint.
+
+- Run `sh evaluate_cta_contrast.sh` with Contrast-pretrained checkpoint.
 
 ## Column Property Annotation
 - Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_rel/`
