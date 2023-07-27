@@ -1,136 +1,42 @@
-import os
 import re
+import os
 import sys
 import json
 import logging
-import numpy as np
+import pandas as pd
 import os.path as osp
 from tqdm import tqdm
-
 
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-from torch.nn import BCEWithLogitsLoss
-
-from torch_geometric.data import InMemoryDataset
-from torch_geometric.loader import DataLoader
-from torchmetrics import Precision, Recall, F1Score, AveragePrecision
-
-import pytorch_lightning as pl
-from pytorch_lightning import  seed_everything
-from pytorch_lightning.loggers import TensorBoardLogger
+from torch.nn import  CrossEntropyLoss
+from torchmetrics import Precision, Recall, F1Score, Accuracy
 
 import transformers
-from transformers import AutoTokenizer, AutoConfig, HfArgumentParser
 from transformers.optimization import AdamW, get_scheduler
-
-from data import BipartiteData
-from model import Encoder
+from transformers import AutoTokenizer, AutoConfig, HfArgumentParser
+from torch_geometric.data import InMemoryDataset
+from torch_geometric.loader import DataLoader
 
 from typing import Optional
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
+import pytorch_lightning as pl
+from pytorch_lightning.loggers import TensorBoardLogger
 
-
-#********************************* set up arguments *********************************
-@dataclass
-class DataArguments:
-    """
-    Arguments pertaining to which config/tokenizer we are going use.
-    """
-    tokenizer_config_type: str = field(
-        default='bert-base-uncased',
-        metadata={
-            "help": "bert-base-cased, bert-base-uncased etc"
-        },
-    )
-    data_path: str = field(default='./data/col_ann/', metadata={"help": "data path"})
-    max_token_length: int = field(
-        default=64,
-        metadata={
-            "help": "The maximum total input token length for cell/caption/header after tokenization. Sequences longer "
-                    "than this will be truncated."
-        },
-    )
-    max_row_length: int = field(
-        default=30,
-        metadata={
-            "help": "The maximum total input rows for a table"
-        },
-    )
-    max_column_length: int = field(
-        default=20,
-        metadata={
-            "help": "The maximum total input columns for a table"
-
-        },
-    )
-    label_type_num: int = field(
-        default=255,
-        metadata={
-            "help": "The total label types"
-
-        },
-    )
-
-    num_workers: Optional[int] = field(
-        default=8,
-        metadata={"help": "Number of workers for dataloader"},
-    )
-
-    valid_ratio: float = field(
-        default=0.3,
-        metadata={"help": "Number of workers for dataloader"},
-    )
-    
-
-
-
-@dataclass
-class OptimizerConfig:
-    batch_size: int = 256
-    base_learning_rate: float = 1e-3
-    weight_decay: float = 0.02
-    adam_beta1: float = 0.9
-    adam_beta2: float = 0.98
-    adam_epsilon: float = 1e-5
-    lr_scheduler_type: transformers.SchedulerType = "linear"
-    warmup_step_ratio: float = 0.1
-    seed: int = 42
-    optimizer: str = "Adam"
-    adam_w_mode: bool = True
-    save_every_n_epochs: int=1
-    save_top_k: int=1
-    checkpoint_path: str=''
-
-    def get_optimizer(self, optim_groups, learning_rate):
-        optimizer = self.optimizer.lower()
-        optim_cls = {
-            "adam": AdamW if self.adam_w_mode else Adam,
-        }[optimizer]
-
-        args = [optim_groups]
-        kwargs = {
-            "lr": learning_rate,
-            "eps": self.adam_epsilon,
-            "betas": (self.adam_beta1, self.adam_beta2),
-        }
-        if optimizer in {"fusedadam", "fusedlamb"}:
-            kwargs["adam_w_mode"] = self.adam_w_mode
-
-        optimizer = optim_cls(*args, **kwargs)
-        return optimizer
+from model import Encoder
+from data import BipartiteData
+from parallel_clean import clean_cell_value
 
 
 
 
 def vocab2lbl(label_file):
-    lbl_dict = {}
-    with open(label_file, 'r') as f:
-        for line in f.readlines():
-            id, name = line.strip().split()
-            lbl_dict[name] = int(id)
-    return lbl_dict
+    labels = set()
+    for file in tqdm(os.listdir(label_file)):
+            if file.endswith('gz'):
+                labels.add(file.split('_')[0])
+    return {l:i for i, l in enumerate(labels)}
 
 class CTAHyperGraphDataset(InMemoryDataset):
     def __init__(self, data_args, tokenizer, type):
@@ -176,6 +82,7 @@ class CTAHyperGraphDataset(InMemoryDataset):
             res = re.sub(number_pattern, number_repl, line)
             return res
         
+        word = clean_cell_value(word)
         word = apply_scientific_notation(word)        
         wordpieces = self.tokenizer.tokenize(word)[:self.data_args.max_token_length]
 
@@ -187,7 +94,6 @@ class CTAHyperGraphDataset(InMemoryDataset):
 
     def _table2graph(self, examples):
         data_list = []
-        pos_count = torch.zeros(self.data_args.label_type_num, dtype=torch.float32)
         for exm in tqdm(examples):
             try:
                 tb = exm['table']
@@ -197,9 +103,9 @@ class CTAHyperGraphDataset(InMemoryDataset):
             cap = ' '.join(cap.split()[:self.data_args.max_token_length]) # filter too long caption
             header = [' '.join(h['name'].split()[:self.data_args.max_token_length]) for h in tb['header']][:self.data_args.max_column_length]
             data = [row[:self.data_args.max_column_length] for row in tb['data'][:self.data_args.max_row_length]]
-            labels = tb['label_ids']
+            label = tb['label_id']
             assert len(data[0]) == len(header)
-
+            
             wordpieces_xs_all, mask_xs_all = [], []
             wordpieces_xt_all, mask_xt_all = [], []
             nodes, edge_index = [], []
@@ -244,7 +150,7 @@ class CTAHyperGraphDataset(InMemoryDataset):
                         wordpieces = ['[CELL]'] + ['[PAD]' for _ in range(self.data_args.max_token_length - 1)]
                         mask = [1] + [0 for _ in range(self.data_args.max_token_length - 1)]
                     else:
-                        word = ' '.join(word.split()[:self.data_args.max_token_length])
+                        word = ' '.join(str(word).split()[:self.data_args.max_token_length])
                         wordpieces, mask = self._tokenize_word(word)
                     wordpieces_xs_all.append(wordpieces)
                     mask_xs_all.append(mask)
@@ -255,19 +161,13 @@ class CTAHyperGraphDataset(InMemoryDataset):
                     edge_index.append([node_id, row_i + 1 + len(header)])  # connect to row-level hyper-edge
 
             # add label
-            label_ids = torch.zeros((len(header), self.data_args.label_type_num), dtype=torch.float32)
-            col_mask = torch.zeros(len(wordpieces_xt_all), dtype=torch.long)
-
-            for col_i, lbl in enumerate(labels):
-                col_mask[col_i+1] = 1 # 0 is caption
-                for lbl_i in lbl:
-                    label_ids[col_i, lbl_i] = 1.0
-                    pos_count[lbl_i] += 1
-
-
+            label_ids =  torch.tensor(label, dtype=torch.long)
+            tab_mask = torch.zeros(len(wordpieces_xt_all), dtype=torch.long)
+            tab_mask[0] = 1
+                
             xs_ids = torch.tensor([self.tokenizer.convert_tokens_to_ids(x) for x in wordpieces_xs_all], dtype=torch.long)
             xt_ids = torch.tensor([self.tokenizer.convert_tokens_to_ids(x) for x in wordpieces_xt_all], dtype=torch.long)
-
+            
 
             # check all 0 input
             xs_tem = torch.count_nonzero(xs_ids, dim =1)
@@ -275,7 +175,7 @@ class CTAHyperGraphDataset(InMemoryDataset):
             assert torch.count_nonzero(xs_tem) == len(xs_tem)
             assert torch.count_nonzero(xt_tem) == len(xt_tem)
             edge_index = torch.tensor(edge_index, dtype=torch.long).T
-            bigraph = BipartiteData(edge_index=edge_index, x_s=xs_ids, x_t=xt_ids, y=label_ids, col_mask = col_mask)
+            bigraph = BipartiteData(edge_index=edge_index, x_s=xs_ids, x_t=xt_ids, y=label_ids, tab_mask = tab_mask)
             data_list.append(bigraph)
         return data_list
 
@@ -301,70 +201,39 @@ class CTADataModule(pl.LightningDataModule):
 
     def json2table(self, data_dir, lbl_dict):
         samples = []
-        with open(data_dir, 'r') as f:
-            data = json.load(f)
-        rows_count, columns_count = [], []
-        for tb in data:
-            id = tb[0]
-            cap = tb[4]
-            heads = tb[5]
-            content = tb[6]
-            labels = tb[-1]
-            assert len(labels) == len(heads)
-            label_ids = []
-            for lbl in labels:
-                label_ids.append([lbl_dict[l] for l in lbl])
-            row_count = max([cell[0][0] for col in content for cell in col]) + 1
-            rows_count.append(row_count)
-            columns_count.append(len(heads))
-
-            data = [['' for _ in range(len(heads))] for _ in range(row_count)]
-            for col in content:
-                for cell in col:
-                    i, j = cell[0][0], cell[0][1]
-                    data[i][j] = cell[1][1]
-
-            # cut long headers
-            if len(heads) > self.data_args.max_column_length:
-                def divide_chunks(l, n):
-                    # looping till length l
-                    for i in range(0, len(l), n):
-                        yield l[i:i + n]
-
-                heads_list = list(divide_chunks(heads, self.data_args.max_column_length))
-                labels_list = list(divide_chunks(labels, self.data_args.max_column_length))
-                label_ids_list = list(divide_chunks(label_ids, self.data_args.max_column_length))
-                data_list = [[] for _ in range(len(heads_list))]
-                for row in data:
-                    row_list = list(divide_chunks(row, self.data_args.max_column_length))
-                    for i in range(len(row_list)):
-                        data_list[i].append(row_list[i])
-            else:
-                heads_list = [heads]
-                labels_list = [labels]
-                label_ids_list = [label_ids]
-                data_list = [data]
-
-            for i in range(len(heads_list)):
-                heads = [{'name': h} for h in heads_list[i]]
-                sample = {'uuid':id, 'table':{'caption':cap, 'header': heads, 'data': data_list[i], 'labels': labels_list[i], 'label_ids': label_ids_list[i]}}
+        print(len(os.listdir(data_dir)))
+        for file in tqdm(os.listdir(data_dir)):
+            if file.endswith('gz'):
+                
+                df = pd.read_json(data_dir+file, compression='gzip', lines=True)
+                id = file
+                cap = ''
+                heads = ['' for _ in df.columns]
+                data = df.values.tolist()
+                label = file.split('_')[0]
+                label_id = lbl_dict[label]
+                heads = [{'name': h} for h in heads]
+                sample = {'uuid':id, 'table':{'caption':cap, 'header': heads, 'data': data, 'label': label, 'label_id': label_id}}
                 samples.append(sample)
+        print(len(samples))
         return samples
 
     def prepare_data(self) -> None:
         self.py_logger.info(f"Preparing data... \n")
+        
+        lbl_dict = {'Product':0, 'Person':1, 'LocalBusiness':2,	'CreativeWork':3, 'Event':4, 'Place':5, 'Restaurant':6, 'Recipe':7, 'JobPosting':8, 'Hotel':9}
 
         if not osp.exists(osp.join(self.data_args.data_path,'preprocessed_train.json')):
+            
+            train_data_dir = self.data_args.data_path + 'train/'
+            valid_data_dir = self.data_args.data_path + 'dev/'
+            test_data_dir = self.data_args.data_path + 'test/'
+            
 
-            label_file = self.data_args.data_path + 'type_vocab.txt'
-            train_data_dir = self.data_args.data_path + 'train.table_col_type.json'
-            valid_data_dir = self.data_args.data_path + 'dev.table_col_type.json'
-            test_data_dir = self.data_args.data_path + 'test.table_col_type.json'
-
-            lbl_dict = vocab2lbl(label_file)
             train_samples = self.json2table(train_data_dir, lbl_dict)
             valid_samples = self.json2table(valid_data_dir, lbl_dict)
-            test_samples = self.json2table(test_data_dir, lbl_dict)
+            test_samples = self.json2table(test_data_dir,  lbl_dict)
+            
 
             json.dump(train_samples, open(osp.join(self.data_args.data_path,'preprocessed_train.json'),'w'))
             json.dump(valid_samples, open(osp.join(self.data_args.data_path, 'preprocessed_valid.json'), 'w'))
@@ -404,12 +273,14 @@ class CTADataModule(pl.LightningDataModule):
 
 
 
+
 class CTAClassifier(pl.LightningModule):
 
     def __init__(self,model_config, optimizer_cfg):
         super().__init__()
         self.model_config = model_config
         self.enc = Encoder(self.model_config)
+
         print('check point',optimizer_cfg.checkpoint_path)
         # for non-deepseepd
         # state_dict = torch.load(open(checkpoint_path, 'rb'))['state_dict']
@@ -430,15 +301,16 @@ class CTAClassifier(pl.LightningModule):
                 name = k[13:] # remove `module.model.`
                 new_state_dict[name] = v
         self.enc.load_state_dict(new_state_dict, strict=True)
+        
 
         self.optimizer_cfg = optimizer_cfg
         self.fc1 = nn.Linear(768, 384)
-        self.fc2 = nn.Linear(384, 255)
+        self.fc2 = nn.Linear(384, 10)
         self.relu = torch.nn.ReLU()
         self.dropout = nn.Dropout()
         self.init_weights()
-        self.loss_fct = BCEWithLogitsLoss()
-        self.pre, self.rec, self.f1, self.avg_pre = Precision(threshold=0.5, average='micro'), Recall(threshold=0.5, average='micro'), F1Score(threshold=0.5, average='micro'), AveragePrecision()
+        self.loss_fct = CrossEntropyLoss()
+        self.pre, self.rec, self.f1, self.acc = Precision( average='micro'), Recall( average='micro'), F1Score(average='micro'), Accuracy()
         
 
     # only need to re-write forward
@@ -449,12 +321,11 @@ class CTAClassifier(pl.LightningModule):
         self.fc2.bias.data.fill_(0.01)
 
     def training_step(self, batch, batch_idx):
-        outputs = self.enc(batch)
+        outputs= self.enc(batch)
         hyperedge_outputs = outputs[1]
-        col_embeds = torch.index_select(hyperedge_outputs, 0, torch.nonzero(batch.col_mask).squeeze())
-
+        tab_embeds = torch.index_select(hyperedge_outputs, 0, torch.nonzero(batch.tab_mask).squeeze())
         labels = batch.y
-        logits = self.fc2(self.dropout(self.relu(self.fc1(col_embeds))))
+        logits = self.fc2(self.dropout(self.relu(self.fc1(tab_embeds))))
         loss = self.loss_fct(logits, labels)
         self.log_dict({'train_loss': loss}, prog_bar=True)
         return loss
@@ -462,48 +333,47 @@ class CTAClassifier(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         outputs= self.enc(batch)
         hyperedge_outputs = outputs[1]
-        col_embeds = torch.index_select(hyperedge_outputs, 0, torch.nonzero(batch.col_mask).squeeze())
-
+        tab_embeds = torch.index_select(hyperedge_outputs, 0, torch.nonzero(batch.tab_mask).squeeze())
         labels = batch.y
-        logits = self.fc2(self.dropout(self.relu(self.fc1(col_embeds))))
+        logits = self.fc2(self.dropout(self.relu(self.fc1(tab_embeds))))
         loss = self.loss_fct(logits, labels)
-
         self.log("validation_loss", loss, prog_bar=True)
-
         return {"logits": logits, "labels": labels}
 
     def validation_epoch_end(self, outputs):
         logits = torch.cat([out["logits"] for out in outputs], dim=0)
         labels = torch.cat([out["labels"] for out in outputs], dim=0).long()
-        probs = torch.sigmoid(logits)
-        precision, recall, f1_score, avg_precision = self.pre(probs, labels), self.rec(probs, labels), self.f1(probs, labels), self.avg_pre(probs, labels)
-        self.log_dict({'val_f1': f1_score, 'val_avg_accuracy': avg_precision,
-                       'val_precision': precision, 'val_recall': recall}, prog_bar=True)
+        preds = torch.argmax(logits, dim=-1)
+        acc = self.acc(preds, labels)
+        p, r, f = self.pre(preds, labels), self.rec(preds, labels), self.f1(preds, labels)
+        self.log_dict({'val_f1_micro': f, 'val_accuracy': acc,
+                       'val_precision_micro': p, 'val_recall_micro': r}, prog_bar=True)
 
 
     def test_step(self, batch, batch_ix):
-        outputs = self.enc(batch)
+        outputs= self.enc(batch)
         hyperedge_outputs = outputs[1]
-        col_embeds = torch.index_select(hyperedge_outputs, 0, torch.nonzero(batch.col_mask).squeeze())
-
+        tab_embeds = torch.index_select(hyperedge_outputs, 0, torch.nonzero(batch.tab_mask).squeeze())
         labels = batch.y
-        logits = self.fc2(self.dropout(self.relu(self.fc1(col_embeds))))
+        logits = self.fc2(self.dropout(self.relu(self.fc1(tab_embeds))))
         loss = self.loss_fct(logits, labels)
+
         self.log("test_loss", loss, prog_bar=True)
+
         return {"logits": logits, "labels": labels}
 
 
     def test_epoch_end(self, outputs):
         logits = torch.cat([out["logits"] for out in outputs], dim=0)
         labels = torch.cat([out["labels"] for out in outputs], dim=0).long()
-        probs = torch.sigmoid(logits)
-        precision, recall, f1_score, avg_precision = self.pre(probs, labels), self.rec(probs, labels), self.f1(probs, labels), self.avg_pre(probs, labels)
-        self.log_dict({'test_f1': f1_score, 'test_avg_accuracy': avg_precision,
-                       'test_precision': precision, 'test_recall': recall}, prog_bar=True)
+        preds = torch.argmax(logits, dim=-1)
+        acc = self.acc(preds, labels)
+        p, r, f = self.pre(preds, labels), self.rec(preds, labels), self.f1(preds, labels)
+        self.log_dict({'test_f1_micro': f, 'test_accuracy': acc,
+                       'test_precision_micro': p, 'test_recall_micro': r}, prog_bar=True)
 
-    # ---------------------
-    # TRAINING SETUP
-    # ---------------------
+
+
 
     def num_training_steps(self) -> int:
         """Total training steps inferred from datamodule and devices."""
@@ -559,11 +429,116 @@ class CTAClassifier(pl.LightningModule):
 
 
 
+#********************************* set up arguments *********************************
+
+@dataclass
+class DataArguments:
+    """
+    Arguments pertaining to which config/tokenizer we are going use.
+    """
+    tokenizer_config_type: str = field(
+        default='bert-base-uncased',
+        metadata={
+            "help": "bert-base-cased, bert-base-uncased etc"
+        },
+    )
+    data_path: str = field(default='../table_graph/data/ta_sotab_cta/', metadata={"help": "data path"})
+    max_token_length: int = field(
+        default=64,
+        metadata={
+            "help": "The maximum total input token length for cell/caption/header after tokenization. Sequences longer "
+                    "than this will be truncated."
+        },
+    )
+    max_row_length: int = field(
+        default=30,
+        metadata={
+            "help": "The maximum total input rows for a table"
+        },
+    )
+    max_column_length: int = field(
+        default=20,
+        metadata={
+            "help": "The maximum total input columns for a table"
+
+        },
+    )
+    label_type_num: int = field(
+        default=255,
+        metadata={
+            "help": "The total label types"
+
+        },
+    )
+
+    num_workers: Optional[int] = field(
+        default=8,
+        metadata={"help": "Number of workers for dataloader"},
+    )
+
+    valid_ratio: float = field(
+        default=0.3,
+        metadata={"help": "Number of workers for dataloader"},
+    )
+
+
+    def __post_init__(self):
+        if self.tokenizer_config_type not in ["bert-base-cased", "bert-base-uncased"]:
+            raise ValueError(
+                f"The model type should be bert-base-(un)cased. The current value is {self.tokenizer_config_type}."
+            )
+
+
+
+@dataclass
+class OptimizerConfig:
+    batch_size: int = 32
+    base_learning_rate: float = 5e-5
+    weight_decay: float = 0.02
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.98
+    adam_epsilon: float = 1e-5
+    lr_scheduler_type: transformers.SchedulerType = "linear"
+    warmup_step_ratio: float = 0.1
+    seed: int = 42
+    optimizer: str = "Adam"
+    adam_w_mode: bool = True
+    save_every_n_epochs: int=1
+    save_top_k: int=1
+    checkpoint_path: str=''
+
+
+    def __post_init__(self):
+        if self.optimizer.lower() not in {
+            "adam",
+            "fusedadam",
+            "fusedlamb",
+            "fusednovograd",
+        }:
+            raise KeyError(
+                f"The optimizer type should be one of: Adam, FusedAdam, FusedLAMB, FusedNovoGrad. The current value is {self.optimizer}."
+            )
+
+    def get_optimizer(self, optim_groups, learning_rate):
+        optimizer = self.optimizer.lower()
+        optim_cls = {
+            "adam": AdamW if self.adam_w_mode else Adam,
+        }[optimizer]
+
+        args = [optim_groups]
+        kwargs = {
+            "lr": learning_rate,
+            "eps": self.adam_epsilon,
+            "betas": (self.adam_beta1, self.adam_beta2),
+        }
+        if optimizer in {"fusedadam", "fusedlamb"}:
+            kwargs["adam_w_mode"] = self.adam_w_mode
+
+        optimizer = optim_cls(*args, **kwargs)
+        return optimizer
 
 
 def evaluate():
-    # ********************************* set up logger *********************************
-
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -571,8 +546,7 @@ def evaluate():
     )
     py_logger = logging.getLogger(__name__)
     py_logger.setLevel(logging.INFO)
-
-    tb_logger = TensorBoardLogger("logs", name="cta_evaluate", default_hp_metric=True)
+    tb_logger = TensorBoardLogger("logs", name="evaluate_ttd")
 
     # ********************************* parse arguments *********************************
     parser = HfArgumentParser((DataArguments, OptimizerConfig))
@@ -591,7 +565,7 @@ def evaluate():
     # ********************************* set up tokenizer and model config*********************************
     # custom BERT tokenizer and model config
     tokenizer = AutoTokenizer.from_pretrained(
-        data_args.tokenizer_config_type) 
+        data_args.tokenizer_config_type)  
     new_tokens = ['[TAB]', '[HEAD]', '[CELL]', '[ROW]', "scinotexp"]
     py_logger.info(f"new tokens added: {new_tokens}\n")
     tokenizer.add_tokens(new_tokens)
@@ -606,6 +580,7 @@ def evaluate():
                                   py_logger=py_logger
                                   )
 
+
     # ********************************* set up model module *********************************
     model_module = CTAClassifier(model_config, optimizer_cfg)
 
@@ -614,7 +589,7 @@ def evaluate():
         pl.callbacks.ModelCheckpoint(
             every_n_epochs=optimizer_cfg.save_every_n_epochs,
             save_top_k=optimizer_cfg.save_top_k,
-            monitor="val_f1",
+            monitor="val_f1_micro",
             mode = "max"
         ),
         pl.callbacks.LearningRateMonitor(logging_interval="step"),
@@ -630,9 +605,12 @@ def evaluate():
     trainer.test(ckpt_path="best", datamodule = data_module)
 
 
+
+
 if __name__ == '__main__':
+    from pytorch_lightning import  seed_everything
+    seed = 32
+    seed_everything(seed, workers=True)
     import warnings
     warnings.filterwarnings("ignore")
-    seed = 42
-    seed_everything(seed, workers=True)
     evaluate()

@@ -1,6 +1,5 @@
-import os
-import re
 import sys
+import re
 import json
 import logging
 import numpy as np
@@ -13,114 +12,20 @@ import torch.nn as nn
 from torch.optim import Adam
 from torch.nn import BCEWithLogitsLoss
 
-from torch_geometric.data import InMemoryDataset
-from torch_geometric.loader import DataLoader
-from torchmetrics import Precision, Recall, F1Score, AveragePrecision
-
 import pytorch_lightning as pl
-from pytorch_lightning import  seed_everything
 from pytorch_lightning.loggers import TensorBoardLogger
 
 import transformers
-from transformers import AutoTokenizer, AutoConfig, HfArgumentParser
 from transformers.optimization import AdamW, get_scheduler
-
-from data import BipartiteData
-from model import Encoder
+from transformers import AutoTokenizer, AutoConfig, HfArgumentParser
+from torch_geometric.data import InMemoryDataset
+from torch_geometric.loader import DataLoader
 
 from typing import Optional
+from model import Encoder
+from data import BipartiteData
 from dataclasses import dataclass, field, fields
-
-
-#********************************* set up arguments *********************************
-@dataclass
-class DataArguments:
-    """
-    Arguments pertaining to which config/tokenizer we are going use.
-    """
-    tokenizer_config_type: str = field(
-        default='bert-base-uncased',
-        metadata={
-            "help": "bert-base-cased, bert-base-uncased etc"
-        },
-    )
-    data_path: str = field(default='./data/col_ann/', metadata={"help": "data path"})
-    max_token_length: int = field(
-        default=64,
-        metadata={
-            "help": "The maximum total input token length for cell/caption/header after tokenization. Sequences longer "
-                    "than this will be truncated."
-        },
-    )
-    max_row_length: int = field(
-        default=30,
-        metadata={
-            "help": "The maximum total input rows for a table"
-        },
-    )
-    max_column_length: int = field(
-        default=20,
-        metadata={
-            "help": "The maximum total input columns for a table"
-
-        },
-    )
-    label_type_num: int = field(
-        default=255,
-        metadata={
-            "help": "The total label types"
-
-        },
-    )
-
-    num_workers: Optional[int] = field(
-        default=8,
-        metadata={"help": "Number of workers for dataloader"},
-    )
-
-    valid_ratio: float = field(
-        default=0.3,
-        metadata={"help": "Number of workers for dataloader"},
-    )
-    
-
-
-
-@dataclass
-class OptimizerConfig:
-    batch_size: int = 256
-    base_learning_rate: float = 1e-3
-    weight_decay: float = 0.02
-    adam_beta1: float = 0.9
-    adam_beta2: float = 0.98
-    adam_epsilon: float = 1e-5
-    lr_scheduler_type: transformers.SchedulerType = "linear"
-    warmup_step_ratio: float = 0.1
-    seed: int = 42
-    optimizer: str = "Adam"
-    adam_w_mode: bool = True
-    save_every_n_epochs: int=1
-    save_top_k: int=1
-    checkpoint_path: str=''
-
-    def get_optimizer(self, optim_groups, learning_rate):
-        optimizer = self.optimizer.lower()
-        optim_cls = {
-            "adam": AdamW if self.adam_w_mode else Adam,
-        }[optimizer]
-
-        args = [optim_groups]
-        kwargs = {
-            "lr": learning_rate,
-            "eps": self.adam_epsilon,
-            "betas": (self.adam_beta1, self.adam_beta2),
-        }
-        if optimizer in {"fusedadam", "fusedlamb"}:
-            kwargs["adam_w_mode"] = self.adam_w_mode
-
-        optimizer = optim_cls(*args, **kwargs)
-        return optimizer
-
+from torchmetrics import Precision, Recall, F1Score, AveragePrecision
 
 
 
@@ -132,7 +37,10 @@ def vocab2lbl(label_file):
             lbl_dict[name] = int(id)
     return lbl_dict
 
-class CTAHyperGraphDataset(InMemoryDataset):
+
+
+
+class CPAHyperGraphDataset(InMemoryDataset):
     def __init__(self, data_args, tokenizer, type):
         self.data_args = data_args
         self.tokenizer = tokenizer
@@ -154,7 +62,6 @@ class CTAHyperGraphDataset(InMemoryDataset):
 
 
     def _tokenize_word(self, word):
-
         # refer to numBERT: https://github.com/google-research/google-research/tree/master/numbert
         number_pattern = re.compile(
             r"(\d+)\.?(\d*)")  # Matches numbers in decimal form.
@@ -255,15 +162,15 @@ class CTAHyperGraphDataset(InMemoryDataset):
                     edge_index.append([node_id, row_i + 1 + len(header)])  # connect to row-level hyper-edge
 
             # add label
-            label_ids = torch.zeros((len(header), self.data_args.label_type_num), dtype=torch.float32)
-            col_mask = torch.zeros(len(wordpieces_xt_all), dtype=torch.long)
+            label_ids = torch.zeros((len(header)-1, self.data_args.label_type_num), dtype=torch.float32)
+            assert len(label_ids) == len(labels) == len(header) -1
+            col_mask = [0 for i in range(len(wordpieces_xt_all))]
+            col_mask[1:1+len(header)] = [1]*len(header)
 
             for col_i, lbl in enumerate(labels):
-                col_mask[col_i+1] = 1 # 0 is caption
                 for lbl_i in lbl:
                     label_ids[col_i, lbl_i] = 1.0
                     pos_count[lbl_i] += 1
-
 
             xs_ids = torch.tensor([self.tokenizer.convert_tokens_to_ids(x) for x in wordpieces_xs_all], dtype=torch.long)
             xt_ids = torch.tensor([self.tokenizer.convert_tokens_to_ids(x) for x in wordpieces_xt_all], dtype=torch.long)
@@ -275,13 +182,13 @@ class CTAHyperGraphDataset(InMemoryDataset):
             assert torch.count_nonzero(xs_tem) == len(xs_tem)
             assert torch.count_nonzero(xt_tem) == len(xt_tem)
             edge_index = torch.tensor(edge_index, dtype=torch.long).T
-            bigraph = BipartiteData(edge_index=edge_index, x_s=xs_ids, x_t=xt_ids, y=label_ids, col_mask = col_mask)
+            bigraph = BipartiteData(edge_index=edge_index, x_s=xs_ids, x_t=xt_ids, y=label_ids, col_mask = col_mask, num_nodes=len(xs_ids), num_hyperedges= len(xt_ids))
             data_list.append(bigraph)
         return data_list
 
 
 
-class CTADataModule(pl.LightningDataModule):
+class CPADataModule(pl.LightningDataModule):
     def __init__(
             self,
             tokenizer,
@@ -304,13 +211,13 @@ class CTADataModule(pl.LightningDataModule):
         with open(data_dir, 'r') as f:
             data = json.load(f)
         rows_count, columns_count = [], []
-        for tb in data:
+        for tb in tqdm(data):
             id = tb[0]
-            cap = tb[4]
+            cap = ' '.join([tb[4], tb[1], tb[3]]).strip()
             heads = tb[5]
             content = tb[6]
             labels = tb[-1]
-            assert len(labels) == len(heads)
+            assert len(labels) == len(heads)-1
             label_ids = []
             for lbl in labels:
                 label_ids.append([lbl_dict[l] for l in lbl])
@@ -331,12 +238,17 @@ class CTADataModule(pl.LightningDataModule):
                     for i in range(0, len(l), n):
                         yield l[i:i + n]
 
-                heads_list = list(divide_chunks(heads, self.data_args.max_column_length))
-                labels_list = list(divide_chunks(labels, self.data_args.max_column_length))
-                label_ids_list = list(divide_chunks(label_ids, self.data_args.max_column_length))
+                heads_list = list(divide_chunks(heads[1:], self.data_args.max_column_length-1))
+                for l in heads_list:
+                    l.insert(0, heads[0])
+                labels_list = list(divide_chunks(labels, self.data_args.max_column_length-1))
+                label_ids_list = list(divide_chunks(label_ids, self.data_args.max_column_length-1))
+                
                 data_list = [[] for _ in range(len(heads_list))]
                 for row in data:
-                    row_list = list(divide_chunks(row, self.data_args.max_column_length))
+                    row_list = list(divide_chunks(row[1:], self.data_args.max_column_length-1))
+                    for l in row_list:
+                        l.insert(0, row[0])
                     for i in range(len(row_list)):
                         data_list[i].append(row_list[i])
             else:
@@ -356,10 +268,10 @@ class CTADataModule(pl.LightningDataModule):
 
         if not osp.exists(osp.join(self.data_args.data_path,'preprocessed_train.json')):
 
-            label_file = self.data_args.data_path + 'type_vocab.txt'
-            train_data_dir = self.data_args.data_path + 'train.table_col_type.json'
-            valid_data_dir = self.data_args.data_path + 'dev.table_col_type.json'
-            test_data_dir = self.data_args.data_path + 'test.table_col_type.json'
+            label_file = self.data_args.data_path + 'relation_vocab.txt'
+            train_data_dir = self.data_args.data_path + 'train.table_rel_extraction.json'
+            valid_data_dir = self.data_args.data_path + 'dev.table_rel_extraction.json'
+            test_data_dir = self.data_args.data_path + 'test.table_rel_extraction.json'
 
             lbl_dict = vocab2lbl(label_file)
             train_samples = self.json2table(train_data_dir, lbl_dict)
@@ -373,9 +285,9 @@ class CTADataModule(pl.LightningDataModule):
 
     def setup(self, stage):
         self.py_logger.info(f"Setting up... \n")
-        self.train_dataset = CTAHyperGraphDataset(self.data_args, self.tokenizer, 'train')
-        self.valid_dataset = CTAHyperGraphDataset(self.data_args, self.tokenizer, 'valid')
-        self.test_dataset = CTAHyperGraphDataset(self.data_args, self.tokenizer, 'test')
+        self.train_dataset = CPAHyperGraphDataset(self.data_args, self.tokenizer, 'train')
+        self.valid_dataset = CPAHyperGraphDataset(self.data_args, self.tokenizer, 'valid')
+        self.test_dataset = CPAHyperGraphDataset(self.data_args, self.tokenizer, 'test')
         self.py_logger.info(
             "Training dataset size {}, validating dataset size {}, testing dataset size {},.".format(len(self.train_dataset), len(self.valid_dataset), len(self.test_dataset)))
 
@@ -392,19 +304,20 @@ class CTADataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(
             self.valid_dataset,
-            batch_size=16,
+            batch_size=self.batch_size,
             num_workers=self.data_args.num_workers)
 
     def test_dataloader(self):
         return DataLoader(
             self.test_dataset,
-            batch_size=16,
+            batch_size=self.batch_size,
             num_workers=self.data_args.num_workers)
 
 
 
 
-class CTAClassifier(pl.LightningModule):
+
+class CPAClassifier(pl.LightningModule):
 
     def __init__(self,model_config, optimizer_cfg):
         super().__init__()
@@ -430,10 +343,11 @@ class CTAClassifier(pl.LightningModule):
                 name = k[13:] # remove `module.model.`
                 new_state_dict[name] = v
         self.enc.load_state_dict(new_state_dict, strict=True)
+        
 
         self.optimizer_cfg = optimizer_cfg
-        self.fc1 = nn.Linear(768, 384)
-        self.fc2 = nn.Linear(384, 255)
+        self.fc1 = nn.Linear(768*2, 384)
+        self.fc2 = nn.Linear(384, 121)
         self.relu = torch.nn.ReLU()
         self.dropout = nn.Dropout()
         self.init_weights()
@@ -441,7 +355,6 @@ class CTAClassifier(pl.LightningModule):
         self.pre, self.rec, self.f1, self.avg_pre = Precision(threshold=0.5, average='micro'), Recall(threshold=0.5, average='micro'), F1Score(threshold=0.5, average='micro'), AveragePrecision()
         
 
-    # only need to re-write forward
     def init_weights(self):
         nn.init.xavier_uniform(self.fc1.weight)
         self.fc1.bias.data.fill_(0.01)
@@ -449,23 +362,47 @@ class CTAClassifier(pl.LightningModule):
         self.fc2.bias.data.fill_(0.01)
 
     def training_step(self, batch, batch_idx):
-        outputs = self.enc(batch)
+        batch_size = len(batch.col_mask)
+        device = batch.edge_index.device
+        outputs= self.enc(batch)
         hyperedge_outputs = outputs[1]
-        col_embeds = torch.index_select(hyperedge_outputs, 0, torch.nonzero(batch.col_mask).squeeze())
-
+        
+        all_hyperedge_embeds = torch.split(hyperedge_outputs, batch.num_hyperedges.cpu().tolist())
+        pairs = []
+        for batch_i in range(batch_size):
+            hyperedge_embeds = all_hyperedge_embeds[batch_i]
+            col_embeds = torch.index_select(hyperedge_embeds, 0, torch.nonzero(torch.LongTensor(batch.col_mask[batch_i])).squeeze().to(device))
+            obj_col_embeds = col_embeds[1:]
+            sub_col_embeds = col_embeds[0].repeat(obj_col_embeds.shape[0], 1)
+            pair_embeds = torch.cat((sub_col_embeds, obj_col_embeds), dim=1)
+            pairs.append(pair_embeds)
+        all_pair_embeds = torch.cat(pairs, dim=0)    
         labels = batch.y
-        logits = self.fc2(self.dropout(self.relu(self.fc1(col_embeds))))
+        assert all_pair_embeds.size(0) == labels.size(0)
+        logits = self.fc2(self.dropout(self.relu(self.fc1(all_pair_embeds))))
         loss = self.loss_fct(logits, labels)
         self.log_dict({'train_loss': loss}, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
+        batch_size = len(batch.col_mask)
+        device = batch.edge_index.device
         outputs= self.enc(batch)
         hyperedge_outputs = outputs[1]
-        col_embeds = torch.index_select(hyperedge_outputs, 0, torch.nonzero(batch.col_mask).squeeze())
-
+        
+        all_hyperedge_embeds = torch.split(hyperedge_outputs, batch.num_hyperedges.cpu().tolist())
+        pairs = []
+        for batch_i in range(batch_size):
+            hyperedge_embeds = all_hyperedge_embeds[batch_i]
+            col_embeds = torch.index_select(hyperedge_embeds, 0, torch.nonzero(torch.LongTensor(batch.col_mask[batch_i])).squeeze().to(device))
+            obj_col_embeds = col_embeds[1:]
+            sub_col_embeds = col_embeds[0].repeat(obj_col_embeds.shape[0], 1)
+            pair_embeds = torch.cat((sub_col_embeds, obj_col_embeds), dim=1)
+            pairs.append(pair_embeds)
+        all_pair_embeds = torch.cat(pairs, dim=0)    
         labels = batch.y
-        logits = self.fc2(self.dropout(self.relu(self.fc1(col_embeds))))
+        assert all_pair_embeds.size(0) == labels.size(0)
+        logits = self.fc2(self.dropout(self.relu(self.fc1(all_pair_embeds))))
         loss = self.loss_fct(logits, labels)
 
         self.log("validation_loss", loss, prog_bar=True)
@@ -482,14 +419,28 @@ class CTAClassifier(pl.LightningModule):
 
 
     def test_step(self, batch, batch_ix):
-        outputs = self.enc(batch)
+        batch_size = len(batch.col_mask)
+        device = batch.edge_index.device
+        outputs= self.enc(batch)
         hyperedge_outputs = outputs[1]
-        col_embeds = torch.index_select(hyperedge_outputs, 0, torch.nonzero(batch.col_mask).squeeze())
-
+        
+        all_hyperedge_embeds = torch.split(hyperedge_outputs, batch.num_hyperedges.cpu().tolist())
+        pairs = []
+        for batch_i in range(batch_size):
+            hyperedge_embeds = all_hyperedge_embeds[batch_i]
+            col_embeds = torch.index_select(hyperedge_embeds, 0, torch.nonzero(torch.LongTensor(batch.col_mask[batch_i])).squeeze().to(device))
+            obj_col_embeds = col_embeds[1:]
+            sub_col_embeds = col_embeds[0].repeat(obj_col_embeds.shape[0], 1)
+            pair_embeds = torch.cat((sub_col_embeds, obj_col_embeds), dim=1)
+            pairs.append(pair_embeds)
+        all_pair_embeds = torch.cat(pairs, dim=0)    
         labels = batch.y
-        logits = self.fc2(self.dropout(self.relu(self.fc1(col_embeds))))
+        assert all_pair_embeds.size(0) == labels.size(0)
+        logits = self.fc2(self.dropout(self.relu(self.fc1(all_pair_embeds))))
         loss = self.loss_fct(logits, labels)
+
         self.log("test_loss", loss, prog_bar=True)
+
         return {"logits": logits, "labels": labels}
 
 
@@ -500,6 +451,8 @@ class CTAClassifier(pl.LightningModule):
         precision, recall, f1_score, avg_precision = self.pre(probs, labels), self.rec(probs, labels), self.f1(probs, labels), self.avg_pre(probs, labels)
         self.log_dict({'test_f1': f1_score, 'test_avg_accuracy': avg_precision,
                        'test_precision': precision, 'test_recall': recall}, prog_bar=True)
+
+
 
     # ---------------------
     # TRAINING SETUP
@@ -517,7 +470,6 @@ class CTAClassifier(pl.LightningModule):
 
     def configure_optimizers(self):
         learning_rate = self.optimizer_cfg.base_learning_rate
-
         # create the optimizer
         no_decay = ["bias", "LayerNorm.weight"]
         params_decay = [
@@ -559,11 +511,116 @@ class CTAClassifier(pl.LightningModule):
 
 
 
+#********************************* set up arguments *********************************
+
+@dataclass
+class DataArguments:
+    """
+    Arguments pertaining to which config/tokenizer we are going use.
+    """
+    tokenizer_config_type: str = field(
+        default='bert-base-uncased',
+        metadata={
+            "help": "bert-base-cased, bert-base-uncased etc"
+        },
+    )
+    data_path: str = field(default='../table_graph/data/col_rel/', metadata={"help": "data path"})
+    max_token_length: int = field(
+        default=64,
+        metadata={
+            "help": "The maximum total input token length for cell/caption/header after tokenization. Sequences longer "
+                    "than this will be truncated."
+        },
+    )
+    max_row_length: int = field(
+        default=30,
+        metadata={
+            "help": "The maximum total input rows for a table"
+        },
+    )
+    max_column_length: int = field(
+        default=20,
+        metadata={
+            "help": "The maximum total input columns for a table"
+
+        },
+    )
+    label_type_num: int = field(
+        default=121,
+        metadata={
+            "help": "The total label types"
+
+        },
+    )
+
+    num_workers: Optional[int] = field(
+        default=8,
+        metadata={"help": "Number of workers for dataloader"},
+    )
+
+    valid_ratio: float = field(
+        default=0.3,
+        metadata={"help": "Number of workers for dataloader"},
+    )
+
+
+    def __post_init__(self):
+        if self.tokenizer_config_type not in ["bert-base-cased", "bert-base-uncased"]:
+            raise ValueError(
+                f"The model type should be bert-base-(un)cased. The current value is {self.tokenizer_config_type}."
+            )
+
+
+
+@dataclass
+class OptimizerConfig:
+    batch_size: int = 256
+    base_learning_rate: float = 1e-3
+    weight_decay: float = 0.02
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.98
+    adam_epsilon: float = 1e-5
+    lr_scheduler_type: transformers.SchedulerType = "linear"
+    warmup_step_ratio: float = 0.1
+    seed: int = 42
+    optimizer: str = "Adam"
+    adam_w_mode: bool = True
+    save_every_n_epochs: int=1
+    save_top_k: int=1
+    checkpoint_path: str=''
+
+
+    def __post_init__(self):
+        if self.optimizer.lower() not in {
+            "adam",
+            "fusedadam",
+            "fusedlamb",
+            "fusednovograd",
+        }:
+            raise KeyError(
+                f"The optimizer type should be one of: Adam, FusedAdam, FusedLAMB, FusedNovoGrad. The current value is {self.optimizer}."
+            )
+
+    def get_optimizer(self, optim_groups, learning_rate):
+        optimizer = self.optimizer.lower()
+        optim_cls = {
+            "adam": AdamW if self.adam_w_mode else Adam,
+        }[optimizer]
+
+        args = [optim_groups]
+        kwargs = {
+            "lr": learning_rate,
+            "eps": self.adam_epsilon,
+            "betas": (self.adam_beta1, self.adam_beta2),
+        }
+        if optimizer in {"fusedadam", "fusedlamb"}:
+            kwargs["adam_w_mode"] = self.adam_w_mode
+
+        optimizer = optim_cls(*args, **kwargs)
+        return optimizer
 
 
 def evaluate():
-    # ********************************* set up logger *********************************
-
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -571,8 +628,7 @@ def evaluate():
     )
     py_logger = logging.getLogger(__name__)
     py_logger.setLevel(logging.INFO)
-
-    tb_logger = TensorBoardLogger("logs", name="cta_evaluate", default_hp_metric=True)
+    tb_logger = TensorBoardLogger("logs", name="evaluate_cpa")
 
     # ********************************* parse arguments *********************************
     parser = HfArgumentParser((DataArguments, OptimizerConfig))
@@ -591,7 +647,7 @@ def evaluate():
     # ********************************* set up tokenizer and model config*********************************
     # custom BERT tokenizer and model config
     tokenizer = AutoTokenizer.from_pretrained(
-        data_args.tokenizer_config_type) 
+        data_args.tokenizer_config_type)  
     new_tokens = ['[TAB]', '[HEAD]', '[CELL]', '[ROW]', "scinotexp"]
     py_logger.info(f"new tokens added: {new_tokens}\n")
     tokenizer.add_tokens(new_tokens)
@@ -599,7 +655,7 @@ def evaluate():
     model_config.update({'vocab_size': len(tokenizer), "pre_norm": False, "activation_dropout":0.1, "gated_proj": False})
     py_logger.info(f"model config: {model_config}\n")
 
-    data_module = CTADataModule(tokenizer=tokenizer,
+    data_module = CPADataModule(tokenizer=tokenizer,
                                   data_args = data_args,
                                   seed=optimizer_cfg.seed,
                                   batch_size=optimizer_cfg.batch_size,
@@ -607,7 +663,7 @@ def evaluate():
                                   )
 
     # ********************************* set up model module *********************************
-    model_module = CTAClassifier(model_config, optimizer_cfg)
+    model_module = CPAClassifier(model_config, optimizer_cfg)
 
     # ********************************* set up trainer *********************************
     callbacks = [
@@ -630,8 +686,12 @@ def evaluate():
     trainer.test(ckpt_path="best", datamodule = data_module)
 
 
+
 if __name__ == '__main__':
+    print(111111)
     import warnings
+    from pytorch_lightning import  seed_everything
+
     warnings.filterwarnings("ignore")
     seed = 42
     seed_everything(seed, workers=True)
