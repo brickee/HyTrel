@@ -29,14 +29,14 @@ Here is an example of creating the environment using [Anaconda](https://www.anac
 
 # Evaluation
 First put the [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint to `/checkpoints/electra/`, and Contrast-pretrained checkpoint to `/checkpoints/contrast/`.
-## Column Type Annotation
+## [Column Type Annotation](https://paperswithcode.com/task/column-type-annotation)
 - Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/`.
   
 - Run `sh evaluate_cta_electra.sh` with [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint.
 
 - Run `sh evaluate_cta_contrast.sh` with Contrast-pretrained checkpoint.
 
-## Column Property Annotation
+## [Column Property Annotation](https://paperswithcode.com/task/columns-property-annotation#:~:text=Column%20Property%20Annotation%20(CPA)%20refers,CPA%20are%20properties%20from%20vocabularies.)
 - Put the data `{train, dev, test}.table_rel_extraction.json` and `relation_vocab.txt` into the directory `/data/col_rel/`.
 
 - Run `sh evaluate_cpa_electra.sh` with [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint.
