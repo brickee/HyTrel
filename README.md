@@ -32,21 +32,23 @@ First put the [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint 
 ## Column Type Annotation
 - Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_ann/`.
   
-
-  
 - Run `sh evaluate_cta_electra.sh` with [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint.
 
 - Run `sh evaluate_cta_contrast.sh` with Contrast-pretrained checkpoint.
 
 ## Column Property Annotation
-- Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/col_rel/`
-- Put the checkpoints to `/checkpoints/`
-- Run `sh evaluate_cpa.sh`
+- Put the data `{train, dev, test}.table_rel_extraction.json` and `relation_vocab.txt` into the directory `/data/col_rel/`.
+
+- Run `sh evaluate_cpa_electra.sh` with [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint.
+
+- Run `sh evaluate_cpa_contrast.sh` with Contrast-pretrained checkpoint.
 
 ## Column Type Annotation
-- Put the data `{train, dev, test}.table_col_type.json` and `type_vocab.txt` into the directory `/data/ttd/`
-- Put the checkpoints to `/checkpoints/`
-- Run `sh evaluate_ttd.sh`
+- Decompose `ttd.tar.gz` into `train, dev, test` data folders under the directory `/data/ttd/`.
+  
+- Run `sh evaluate_ttd_electra.sh` with [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint.
+
+- Run `sh evaluate_ttd_contrast.sh` with Contrast-pretrained checkpoint.
 
 # Load Checkpoints for Custom Data
 To appear.
