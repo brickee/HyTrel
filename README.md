@@ -50,8 +50,10 @@ First put the [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint 
 
 - Run `sh evaluate_ttd_contrast.sh` with Contrast-pretrained checkpoint.
 
+<!---
 # Load Checkpoints for Custom Data
 To appear.
+-->
 
 # Reference
 Please cite our [paper](https://arxiv.org/pdf/2307.08623.pdf).
