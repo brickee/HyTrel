@@ -43,7 +43,7 @@ First put the [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint 
 
 - Run `sh evaluate_cpa_contrast.sh` with Contrast-pretrained checkpoint.
 
-## Column Type Annotation
+## Table Type Annotation
 - Decompose `ttd.tar.gz` into `train, dev, test` data folders under the directory `/data/ttd/`.
   
 - Run `sh evaluate_ttd_electra.sh` with [ELECTRA](https://arxiv.org/abs/2105.02584)-pretrained checkpoint.
