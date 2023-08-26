@@ -16,7 +16,7 @@ Here is an example of creating the environment using [Anaconda](https://www.anac
 **Note**: If you encounter difficulty installing `torch_geometric`, please refer [here](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html) to install it according to your environment settings.
 
 # Pretraining
--  Pre-process the raw data, slicing the big file into chunks, and put the `*.jsonl` files into the directory `/data/pretrain/chunks/`. Sample data is present in [here](https://github.com/brickee/HyTrel/tree/main/data/pretrain/chunks) and the files can be used as reference.\
+-  Pre-process the raw data, slicing the big file into chunks, and put the `*.jsonl` files into the directory `/data/pretrain/chunks/`. Sample data is present [here](https://github.com/brickee/HyTrel/tree/main/data/pretrain/chunks) and the files can be used as reference.\
   **Note**: Pretraining data `*.jsonl` are acquired and preprocessed by using the scripts from the [TaBERT](https://arrow.apache.org/docs/python/index.html).
  
 - Run `python parallel_clean.py` to clean and serialize the tables. \
