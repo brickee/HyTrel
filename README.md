@@ -69,3 +69,5 @@ Please cite our [paper](https://arxiv.org/pdf/2307.08623.pdf).
  year = {2023}
 }
 ```
+# Contact
+For questions on details regarding the implementation, please email: chenpei.net@gmail.com 
